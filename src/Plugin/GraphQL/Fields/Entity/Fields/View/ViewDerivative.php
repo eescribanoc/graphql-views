@@ -56,14 +56,6 @@ use GraphQL\Type\Definition\ResolveInfo;
 class ViewDerivative extends View {
   use ViewDeriverHelperTrait;
 
-
-  /**
-   * The overriden values from view reference field configuration.
-   *
-   * @var array
-   */
-  protected $overridenValues = [];
-
   /**
    * {@inheritdoc}
    */
@@ -76,8 +68,8 @@ class ViewDerivative extends View {
     $this->pluginDefinition['paged'] = $this->isPaged($display);
     $this->pluginDefinition['arguments_info'] = $this->getArgumentsInfo($display->getOption('arguments') ?: []);
     $this->pluginDefinition = array_merge($this->pluginDefinition, $this->getCacheMetadataDefinition($view, $display));
-    $this->setOverridenArguments($value, $args);
-    $this->setViewDefaultValues($display, $args);
+    $this->setOverridenViewDefaults($value, $args);
+    $this->setViewDefaultValues($display, $args, $info);
     return parent::resolveValues($value, $args, $context, $info);
   }
 
@@ -87,9 +79,9 @@ class ViewDerivative extends View {
    * @param mixed $value
    *   The current object value.
    */
-  protected function getOverridenArguments($value) {
+  protected function getViewReferenceConfiguration($value) {
     $values = $value->getValue();
-    $this->overridenValues = isset($values['data']) ? unserialize($values['data']) : [];
+    return isset($values['data']) ? unserialize($values['data']) : [];
   }
 
   /**
@@ -100,26 +92,26 @@ class ViewDerivative extends View {
    * @param array $args
    *   Arguments where the default view settings needs to be added.
    */
-  protected function setOverridenArguments($value, array &$args) {
-    $this->getOverridenArguments($value);
-    if (isset($this->overridenValues['pager'])) {
-      $this->pluginDefinition['paged'] = in_array($this->overridenValues['pager'], [
+  protected function setOverridenViewDefaults($value, array &$args) {
+    $viewReferenceConfiguration = $this->getViewReferenceConfiguration($value);
+    if (isset($viewReferenceConfiguration['pager'])) {
+      $this->pluginDefinition['paged'] = in_array($viewReferenceConfiguration['pager'], [
         'full',
-        'mini'
+        'mini',
       ]);
     }
 
-    if (!isset($args['pageSize']) && isset($this->overridenValues['limit']) && !empty($this->overridenValues['limit'])) {
-      $args['pageSize'] = $this->overridenValues['limit'];
+    if (!isset($args['pageSize']) && !empty($viewReferenceConfiguration['limit'])) {
+      $args['pageSize'] = $viewReferenceConfiguration['limit'];
     }
 
-    if (!isset($args['offset']) && isset($this->overridenValues['offset']) && !empty($this->overridenValues['offset'])) {
-      $args['offset'] = $this->overridenValues['offset'];
+    if (!isset($args['offset']) && !empty($viewReferenceConfiguration['offset'])) {
+      $args['offset'] = $viewReferenceConfiguration['offset'];
     }
 
     /* Expected format: {"contextualFilter": {"key": "value","keyN": "valueN"}} */
-    if (!isset($args['contextualFilter']) && isset($this->overridenValues['argument']) && !empty($this->overridenValues['argument'])) {
-      $argument = json_decode($this->overridenValues['argument'], TRUE);
+    if (!isset($args['contextualFilter']) && !empty($viewReferenceConfiguration['argument'])) {
+      $argument = json_decode($viewReferenceConfiguration['argument'], TRUE);
       if (isset($argument['contextualFilter']) && !empty($argument['contextualFilter'])) {
         $args['contextualFilter'] = $argument['contextualFilter'];
       }
@@ -133,13 +125,21 @@ class ViewDerivative extends View {
    *   The display configuration.
    * @param array $args
    *   Arguments where the default view settings needs to be added.
+   * @param \GraphQL\Type\Definition\ResolveInfo $info
+   *   The graphql resolve info.
    */
-  protected function setViewDefaultValues(DisplayPluginInterface $display, array &$args) {
+  protected function setViewDefaultValues(DisplayPluginInterface $display, array &$args, ResolveInfo $info) {
     if (!isset($args['pageSize']) && $this->pluginDefinition['paged']) {
       $args['pageSize'] = $this->getPagerLimit($display);
     }
     if (!isset($args['page']) && $this->pluginDefinition['paged']) {
       $args['page'] = $this->getPagerOffset($display);
+    }
+    // Supports variables in graphql values for contextual filters.
+    foreach ($args['contextualFilter'] as $key => $contextualFilterValue) {
+      if (empty($contextualFilterValue) && !empty($info->variableValues[$key])) {
+        $args['contextualFilter'][$key] = $info->variableValues[$key];
+      }
     }
   }
 
