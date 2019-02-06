@@ -109,11 +109,16 @@ class ViewDerivative extends View {
       $args['offset'] = $viewReferenceConfiguration['offset'];
     }
 
-    /* Expected format: {"contextualFilter": {"key": "value","keyN": "valueN"}} */
-    if (!isset($args['contextualFilter']) && !empty($viewReferenceConfiguration['argument'])) {
-      $argument = json_decode($viewReferenceConfiguration['argument'], TRUE);
-      if (isset($argument['contextualFilter']) && !empty($argument['contextualFilter'])) {
-        $args['contextualFilter'] = $argument['contextualFilter'];
+    $allowed_arguments = ['filter', 'contextualFilter'];
+    /* Expected format:
+    {"contextualFilter": {"key": "value","keyN": "valueN"}}
+    {"filter": {"machine_name": ["value_multi","value_multi2"], "machine_name": "single_value"}}*/
+    foreach ($allowed_arguments as $key) {
+      if (count(array_filter($args[$key])) === 0 && !empty($viewReferenceConfiguration['argument'])) {
+        $argument = json_decode($viewReferenceConfiguration['argument'], TRUE);
+        if (isset($argument[$key]) && !empty($argument[$key])) {
+          $args[$key] = $argument[$key];
+        }
       }
     }
   }
